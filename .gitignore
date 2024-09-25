@@ -1,0 +1,48 @@
+# Virtual environment
+venv/
+.env/
+.env.*
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Log files
+*.log
+
+# IDE files
+.vscode/
+.idea/
+.spyderproject
+.spyproject
+.ropeproject
+
+# Environment variables
+.env
+.env.*
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Build and distribution files
+build/
+dist/
+*.egg-info/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# Coverage reports
+htmlcov/
+.coverage
+
+# Temporary files
+*.tmp
+*.temp
+
+# PyInstaller
+*.spec
+/build/
+/dist/
+/*.egg-info/

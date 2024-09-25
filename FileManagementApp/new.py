@@ -5,28 +5,128 @@ import shutil
 from datetime import datetime
 import subprocess
 import platform
+from cryptography.fernet import Fernet
 import json
 
 CONFIG_FILE = 'editor_config.json'
+CREDENTIALS_FILE = 'credentials.json'
+
+class CreateAccountDialog(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.transient(parent)
+        self.grab_set()
+
+        self.username = None
+        self.password = None
+
+        self.title("Create Account")
+        self.geometry("300x200")
+
+        tk.Label(self, text="Username:").pack(padx=20, pady=10)
+        self.username_entry = tk.Entry(self)
+        self.username_entry.pack(padx=20, pady=5)
+
+        tk.Label(self, text="Password:").pack(padx=20, pady=10)
+        self.password_entry = tk.Entry(self, show="*")
+        self.password_entry.pack(padx=20, pady=5)
+
+        tk.Button(self, text="Create Account", command=self.on_create).pack(padx=20, pady=20)
+
+        self.protocol("WM_DELETE_WINDOW", self.on_cancel)
+        self.center_window(parent)
+        self.wait_window(self)
+
+    def center_window(self, parent):
+        window_width = 300
+        window_height = 200
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        position_top = int(screen_height / 2 - window_height / 2)
+        position_right = int(screen_width / 2 - window_width / 2)
+        self.geometry(f'{window_width}x{window_height}+{position_right}+{position_top}')
+
+    def on_create(self):
+        self.username = self.username_entry.get()
+        self.password = self.password_entry.get()
+        if self.username and self.password:
+            self.destroy()
+        else:
+            messagebox.showerror("Error", "Username and password cannot be empty.")
+
+    def on_cancel(self):
+        self.username = None
+        self.password = None
+        self.destroy()
+
+class LoginDialog(simpledialog.Dialog):
+    def body(self, master):
+        self.title("Login")
+
+        tk.Label(master, text="Username:").grid(row=0)
+        tk.Label(master, text="Password:").grid(row=1)
+
+        self.username_entry = tk.Entry(master)
+        self.password_entry = tk.Entry(master, show="*")
+
+        self.username_entry.grid(row=0, column=1)
+        self.password_entry.grid(row=1, column=1)
+
+        return self.username_entry
+
+    def apply(self):
+        self.username = self.username_entry.get()
+        self.password = self.password_entry.get()
+    def show(self):
+        self.update_idletasks()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = self.winfo_reqwidth()
+        window_height = self.winfo_reqheight()
+        position_top = int(screen_height / 2 - window_height / 2)
+        position_right = int(screen_width / 2 - window_width / 2)
+        self.geometry(f'{window_width}x{window_height}+{position_right}+{position_top}')
+        self.deiconify()
+        self.wait_window(self)
 
 class FileManagementApp(tk.Tk):
     
     def __init__(self):
         super().__init__()
-
+        
         self.title("File Management System")
         self.geometry("800x600")
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = 1000
+        window_height = 800
+        position_top = int(screen_height / 2 - window_height / 2)
+        position_right = int(screen_width / 2 - window_width / 2)
+        self.geometry(f'{window_width}x{window_height}+{position_right}+{position_top}')
+
+        self.credentials = self.load_credentials()
+        self.logged_in = False 
+        self.login()
+
+        if not self.logged_in:
+            self.destroy()
+            return
+
+        
 
         self.create_widgets()
         self.file_paths = {}  # Dictionary to store full file paths
         self.folder_history = []  # List to keep track of folder navigation history
-        self.root_folder = os.path.join(os.path.expanduser("~"), "Pettrolium Files")  # Use this folder as the root
+        self.root_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Pettrolium Files")
         os.makedirs(self.root_folder, exist_ok=True)  # Create the folder if it doesn't exist
         self.current_folder = self.root_folder  # Set the initial folder to the root folder
 
         # Display initial folder contents
         self.display_parent_folder_contents(self.root_folder)
         self.display_folder_contents(self.root_folder)
+
+    
+
 
     def create_widgets(self):
         # Create main frame
@@ -147,7 +247,32 @@ class FileManagementApp(tk.Tk):
                          self.parent_tree.insert("", "end", iid=item_path, values=(item_name, "Folder" if os.path.isdir(item_path) else "File"))
             except PermissionError:
                 messagebox.showerror("Error", f"Permission denied to access folder: {folder_path}")
+    def create_account(self):
+        create_account_dialog = CreateAccountDialog(self)
+        if create_account_dialog.username and create_account_dialog.password:
+        # Check if the username already exists
+            if create_account_dialog.username in self.credentials:
+                messagebox.showerror("Error", "Username already exists. Please choose a different username.")
+            else:
+            # Add the new account to the credentials
+                self.credentials[create_account_dialog.username] = create_account_dialog.password
+                self.save_credentials()
+                messagebox.showinfo("Success", "Account created successfully. You can now log in.")
 
+    def save_credentials(self):
+        try:
+        # Load the key
+            with open("secret.key", "rb") as key_file:
+                 key = key_file.read()
+            cipher = Fernet(key)
+        
+        # Encrypt and save the credentials
+            credentials_bytes = json.dumps(self.credentials).encode("utf-8")
+            encrypted_credentials = cipher.encrypt(credentials_bytes)
+            with open("credentials.enc", "wb") as enc_file:
+                enc_file.write(encrypted_credentials)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save credentials: {e}")
 
     def display_folder_contents(self, folder_path):
         self.current_folder = folder_path
@@ -416,7 +541,40 @@ class FileManagementApp(tk.Tk):
             return properties
         except Exception as e:
             return f"Error retrieving properties: {e}"
-
+    def load_credentials(self):
+        try:
+        # Load the key
+            with open("secret.key", "rb") as key_file:
+                 key = key_file.read()
+            cipher = Fernet(key)
+        
+        # Load and decrypt the credentials
+            with open("credentials.enc", "rb") as enc_file:
+                 encrypted_credentials = enc_file.read()
+            decrypted_credentials = cipher.decrypt(encrypted_credentials)
+            return json.loads(decrypted_credentials.decode("utf-8"))
+        except FileNotFoundError:
+            return {}  # Return empty dict if files not found
+        except Exception as e:
+            print(f"Error loading credentials: {e}")
+            return {}
+    def login(self):
+        while not self.logged_in:
+            login_dialog = LoginDialog(self)
+            username = login_dialog.username
+            password = login_dialog.password
+    
+            if username is None and password is None:
+                # User closed the dialog without logging in or creating an account
+                self.quit()
+                return
+    
+            if username in self.credentials and self.credentials[username] == password:
+                self.logged_in = True
+            else:
+                messagebox.showerror("Login Failed", "Invalid username or password.")
+       
+    
     def get_folder_size(self, folder_path):
         total_size = 0
         for dirpath, dirnames, filenames in os.walk(folder_path):
@@ -425,6 +583,60 @@ class FileManagementApp(tk.Tk):
                 if os.path.isfile(file_path):
                     total_size += os.path.getsize(file_path)
         return total_size
+class LoginDialog(tk.Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.transient(parent)
+        self.grab_set()
+
+        self.username = None
+        self.password = None
+
+        self.title("Login")
+        self.geometry("300x250")  # Increased height to accommodate new button
+
+        tk.Label(self, text="Username:").pack(padx=20, pady=10)
+        self.username_entry = tk.Entry(self)
+        self.username_entry.pack(padx=20, pady=5)
+
+        tk.Label(self, text="Password:").pack(padx=20, pady=10)
+        self.password_entry = tk.Entry(self, show="*")
+        self.password_entry.pack(padx=20, pady=5)
+
+        tk.Button(self, text="Login", command=self.on_login).pack(padx=20, pady=10)
+        tk.Button(self, text="Create Account", command=self.on_create_account).pack(padx=20, pady=10)
+
+        self.protocol("WM_DELETE_WINDOW", self.on_cancel)
+        self.center_window(parent)
+        self.wait_window(self)
+
+    def on_create_account(self):
+        # self.destroy()
+        self.parent.create_account()
+    
+    def center_window(self, parent):
+        window_width = 300
+        window_height = 250
+        parent.update_idletasks()
+        screen_width = parent.winfo_screenwidth()
+        screen_height = parent.winfo_screenheight()
+        # window_width = self.winfo_reqwidth()
+        # window_height = self.winfo_reqheight()
+        position_top = int(parent.winfo_y() + parent.winfo_height() / 2 - window_height / 2)
+        position_right = int(parent.winfo_x() + parent.winfo_width() / 2 - window_width / 2)
+        self.geometry(f'{window_width}x{window_height}+{position_right}+{position_top}')
+
+
+    def on_login(self):
+        self.username = self.username_entry.get()
+        self.password = self.password_entry.get()
+        self.destroy()
+
+    def on_cancel(self):
+        self.username = None
+        self.password = None
+        self.destroy()
 
 if __name__ == "__main__":
     app = FileManagementApp()
